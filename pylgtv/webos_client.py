@@ -18,11 +18,12 @@ class PyLGTVPairException(Exception):
 
 
 class WebOsClient(object):
-    def __init__(self, ip, key_file_path=None):
+    def __init__(self, ip, key_file_path=None, timeout=10):
         """Initialize the client."""
         self.ip = ip
         self.port = 3000
         self.key_file_path = key_file_path
+        self.timeout = timeout
         self.client_key = None
         self.web_socket = None
         self.command_count = 0
@@ -106,10 +107,18 @@ class WebOsClient(object):
         return self.client_key is not None
 
     @asyncio.coroutine
+    def _connect_ws(self):
+        future = websockets.connect(
+            "ws://{}:{}".format(self.ip, self.port), timeout=self.timeout)
+        try:
+            return (yield from asyncio.wait_for(future, timeout=self.timeout))
+        except asyncio.TimeoutError:
+            raise TimeoutError
+
+    @asyncio.coroutine
     def _register(self):
         """Register wrapper."""
-        websocket = yield from  websockets.connect(
-                "ws://{}:{}".format(self.ip, self.port))
+        websocket = yield from self._connect_ws();
 
         try:
             yield from self._send_register_payload(websocket)
@@ -126,8 +135,7 @@ class WebOsClient(object):
     @asyncio.coroutine
     def _command(self, msg):
         """Send a command to the tv."""
-        websocket = yield from websockets.connect(
-                "ws://{}:{}".format(self.ip, self.port))
+        websocket = yield from self._connect_ws();
 
         try:
             yield from self._send_register_payload(websocket)
